@@ -1,0 +1,85 @@
+# RAG Hallucination Detection - Configuration File
+
+# Dataset Configuration
+dataset:
+  name: "natural_questions"  # Options: natural_questions, musique
+  subset_size: 1000  # Number of samples to use (for feasibility)
+  split: "train"
+
+# Retrieval Configuration
+retrieval:
+  bm25:
+    k1: 1.2
+    b: 0.75
+    top_k: 5
+
+  dense:
+    model_name: "multi-qa-mpnet-base-dot-v1"
+    top_k: 5
+    embedding_dim: 768
+
+  # Retrieval Quality Tiers
+  quality_tiers:
+    high:
+      relevant_ratio: 0.8
+      distractor_ratio: 0.2
+    medium:
+      relevant_ratio: 0.5
+      distractor_ratio: 0.5
+    low:
+      relevant_ratio: 0.2
+      distractor_ratio: 0.8
+
+# Generation Configuration
+generation:
+  model_name: "mistralai/Mistral-7B-Instruct-v0.1"  # or "meta-llama/Llama-2-7b-chat-hf"
+  max_new_tokens: 200
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+  device: "auto"  # auto, cuda, cpu
+  load_in_8bit: true  # For memory efficiency
+
+# Detection Configuration
+detection:
+  ragas:
+    metrics:
+      - "faithfulness"
+      - "answer_relevancy"
+      - "context_precision"
+
+  nli:
+    model_name: "roberta-large-mnli"
+    threshold: 0.5
+
+  lexical:
+    overlap_threshold: 0.3
+    use_lemmatization: true
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auroc"
+  random_seed: 42
+
+# Paths
+paths:
+  data_dir: "data"
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  indices_dir: "data/indices"
+  embeddings_dir: "data/embeddings"
+  models_dir: "models"
+  outputs_dir: "outputs"
+  results_dir: "outputs/results"
+  visualizations_dir: "outputs/visualizations"
+
+# Experiment Settings
+experiment:
+  name: "rag_hallucination_detection"
+  version: "v1.0"
+  save_intermediate: true
+  verbose: true

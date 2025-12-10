@@ -10,18 +10,27 @@ from ragas.metrics import (
     context_precision,
     context_recall
 )
+from ragas.llms import LangchainLLMWrapper
+from ragas.embeddings import LangchainEmbeddingsWrapper
 from datasets import Dataset
 from typing import List, Dict
 import pandas as pd
+from langchain_community.llms import HuggingFacePipeline
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from transformers import pipeline
+import torch
 
 class RAGASDetector:
     """
-    RAGAS-based hallucination detector
+    RAGAS-based hallucination detector using local models
     """
 
     def __init__(self, config):
         self.config = config
         self.metrics_config = config['detection']['ragas']['metrics']
+
+        # Initialize local models for RAGAS
+        self._init_local_models()
 
         # Map metric names to RAGAS metrics
         self.metric_map = {
@@ -30,6 +39,37 @@ class RAGASDetector:
             'context_precision': context_precision,
             'context_recall': context_recall
         }
+
+    def _init_local_models(self):
+        """Initialize local LLM and embeddings for RAGAS"""
+        print("Initializing local models for RAGAS...")
+
+        try:
+            # Use a small local LLM for RAGAS
+            # Use TinyLlama for speed
+            llm_pipeline = pipeline(
+                "text-generation",
+                model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto",
+                max_new_tokens=100,
+                temperature=0.7
+            )
+
+            self.llm = LangchainLLMWrapper(HuggingFacePipeline(pipeline=llm_pipeline))
+
+            # Use local embeddings
+            self.embeddings = LangchainEmbeddingsWrapper(
+                HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            )
+
+            print("✓ Local models initialized for RAGAS")
+
+        except Exception as e:
+            print(f"Warning: Could not initialize local models: {e}")
+            print("RAGAS will use defaults (may require OpenAI API key)")
+            self.llm = None
+            self.embeddings = None
 
     def prepare_data(
         self,
@@ -90,8 +130,17 @@ class RAGASDetector:
             if metric_name in self.metric_map
         ]
 
-        # Evaluate
-        results = evaluate(dataset, metrics=metrics)
+        # Evaluate with local models if available
+        if self.llm and self.embeddings:
+            results = evaluate(
+                dataset,
+                metrics=metrics,
+                llm=self.llm,
+                embeddings=self.embeddings
+            )
+        else:
+            # Fallback to default (may require OpenAI API key)
+            results = evaluate(dataset, metrics=metrics)
 
         return results
 

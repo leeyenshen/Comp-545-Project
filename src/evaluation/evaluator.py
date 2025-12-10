@@ -123,8 +123,9 @@ class HallucinationEvaluator:
         Returns:
             Dictionary of metrics
         """
-        y_true = df['ground_truth_hallucinated'].astype(int).values
-        y_pred = df[pred_col].astype(int).values
+        # Handle None/NaN values - fill with False (not hallucinated) as default
+        y_true = df['ground_truth_hallucinated'].fillna(False).astype(int).values
+        y_pred = df[pred_col].fillna(False).astype(int).values
 
         y_scores = None
         if score_col and score_col in df.columns:
@@ -133,6 +134,8 @@ class HallucinationEvaluator:
             # Convert scores to probabilities if needed
             # For NLI: low entailment prob = high hallucination prob
             if 'entailment' in score_col:
+                # Handle NaN scores
+                y_scores = pd.Series(y_scores).fillna(0.5).values
                 y_scores = 1 - y_scores  # Invert for hallucination probability
 
         metrics = self.compute_metrics(y_true, y_pred, y_scores)

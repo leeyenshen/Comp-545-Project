@@ -5,7 +5,7 @@ Generates answers using instruction-tuned LLMs (Mistral/Llama)
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from typing import List, Dict
+from typing import List, Dict, Tuple
 import yaml
 from pathlib import Path
 

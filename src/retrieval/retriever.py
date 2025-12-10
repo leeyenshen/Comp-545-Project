@@ -9,8 +9,17 @@ import faiss
 import pickle
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
-from pyserini.search.lucene import LuceneSearcher
 from typing import List, Dict, Tuple
+
+# Make Pyserini optional (for BM25)
+try:
+    from pyserini.search.lucene import LuceneSearcher
+    PYSERINI_AVAILABLE = True
+except (ImportError, RuntimeError) as e:
+    print(f"Warning: Pyserini not available: {e}")
+    print("BM25 retrieval will be disabled. Using FAISS (dense) retrieval only.")
+    PYSERINI_AVAILABLE = False
+    LuceneSearcher = None
 
 class RAGRetriever:
     """
@@ -27,6 +36,10 @@ class RAGRetriever:
 
     def load_bm25(self):
         """Load BM25 index"""
+        if not PYSERINI_AVAILABLE:
+            print("Warning: BM25 disabled - Pyserini not available")
+            return
+
         index_path = Path(self.config['paths']['indices_dir']) / "bm25_index"
         if index_path.exists():
             self.bm25_searcher = LuceneSearcher(str(index_path))
@@ -57,8 +70,16 @@ class RAGRetriever:
         """
         Retrieve using BM25
         """
+        if not PYSERINI_AVAILABLE:
+            print("Warning: BM25 retrieval not available - Pyserini not installed")
+            return []
+
         if self.bm25_searcher is None:
             self.load_bm25()
+
+        if self.bm25_searcher is None:
+            print("Warning: BM25 searcher could not be loaded")
+            return []
 
         hits = self.bm25_searcher.search(query, k=k)
 

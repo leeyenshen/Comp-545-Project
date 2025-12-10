@@ -12,14 +12,14 @@
 ### 2. SSH into Instance
 ```bash
 # From Vast.ai instance page, copy SSH command
-ssh -p <PORT> root@<HOST>
+ssh -p 49021 root@199.68.217.31 -L 8080:localhost:8080
 ```
 
 ### 3. Upload Project
 **Option A: Git (Recommended)**
 ```bash
 cd /workspace
-git clone https://github.com/<your-repo>.git rag_hallucination
+git clone https://github.com/leeyenshen/Comp-545-Project.git rag_hallucination
 cd rag_hallucination
 ```
 
@@ -60,7 +60,7 @@ chmod +x run_vastai_pipeline.sh
 ### 7. Download Results
 ```bash
 # From local machine
-scp -P <PORT> -r root@<HOST>:/workspace/rag_hallucination/outputs/ ./
+scp -P <PORT> -r root@<HOST>:/workspace/rag_hallucination/outputs/ /Users/leeyenshen/Desktop/
 ```
 
 ---

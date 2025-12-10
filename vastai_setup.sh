@@ -34,7 +34,8 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 # Install FAISS GPU
 echo "🚀 Installing FAISS GPU..."
-pip install faiss-gpu
+# Note: faiss-gpu is now part of the main faiss-cpu package with GPU support
+conda install -c pytorch faiss-gpu=1.8.0 -y || pip install faiss-cpu  # faiss-cpu includes GPU support when CUDA is available
 
 # Install other requirements
 echo "📦 Installing other dependencies..."

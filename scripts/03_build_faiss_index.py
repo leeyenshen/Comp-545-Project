@@ -74,6 +74,7 @@ def create_embeddings(config, passages):
 def build_faiss_index(config, embeddings):
     """
     Build FAISS index for fast similarity search
+    Automatically uses GPU if available
     """
     print("Building FAISS index...")
 
@@ -81,12 +82,37 @@ def build_faiss_index(config, embeddings):
     dimension = embeddings.shape[1]
 
     # Create FAISS index (L2 distance)
-    index = faiss.IndexFlatL2(dimension)
+    index_cpu = faiss.IndexFlatL2(dimension)
 
     # Add embeddings
-    index.add(embeddings)
+    index_cpu.add(embeddings)
 
-    print(f"FAISS index built with {index.ntotal} vectors")
+    print(f"FAISS index built with {index_cpu.ntotal} vectors")
+
+    # Try to move to GPU if available
+    num_gpus = faiss.get_num_gpus()
+    if num_gpus > 0:
+        print(f"🚀 {num_gpus} GPU(s) detected! Converting FAISS index to GPU...")
+        try:
+            res = faiss.StandardGpuResources()
+            index_gpu = faiss.index_cpu_to_gpu(res, 0, index_cpu)
+            print("✅ FAISS index running on GPU for faster search")
+
+            # Save CPU version for portability
+            index_dir = Path(config['paths']['indices_dir'])
+            index_dir.mkdir(parents=True, exist_ok=True)
+            index_path = index_dir / "faiss_index.bin"
+            faiss.write_index(index_cpu, str(index_path))
+            print(f"Saved CPU index to {index_path} (for portability)")
+
+            return index_gpu
+        except Exception as e:
+            print(f"⚠️  GPU conversion failed: {e}")
+            print("Falling back to CPU index")
+            index = index_cpu
+    else:
+        print("⚠️  No GPU available, using CPU index")
+        index = index_cpu
 
     # Save index
     index_dir = Path(config['paths']['indices_dir'])

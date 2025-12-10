@@ -37,8 +37,8 @@ generation:
   temperature: 0.7
   top_p: 0.9
   do_sample: true
-  device: "mps"  # auto, cuda, cpu, mps (for Apple Silicon)
-  load_in_8bit: false  # Disabled for macOS (requires CUDA)
+  device: "auto"  # auto, cuda, cpu, mps (for Apple Silicon)
+  load_in_8bit: true  # Disabled for macOS (requires CUDA)
 
 # Detection Configuration
 detection:

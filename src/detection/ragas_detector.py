@@ -131,12 +131,23 @@ class RAGASDetector:
         ]
 
         # Evaluate with local models if available
+        # Add timeout and batch configuration
         if self.llm and self.embeddings:
+            # Configure execution with longer timeout and smaller batches
+            from ragas import RunConfig
+            run_config = RunConfig(
+                timeout=300.0,  # 5 minutes per item (increased from default 60s)
+                max_workers=2,   # Reduce parallelism to avoid overload
+                max_wait=1800.0  # 30 minute total timeout
+            )
+
             results = evaluate(
                 dataset,
                 metrics=metrics,
                 llm=self.llm,
-                embeddings=self.embeddings
+                embeddings=self.embeddings,
+                run_config=run_config,
+                raise_exceptions=False  # Continue on errors
             )
         else:
             # Fallback to default (may require OpenAI API key)
@@ -179,7 +190,15 @@ class RAGASDetector:
         questions = [qa['question'] for qa in qa_pairs]
         contexts = [qa['context'] for qa in qa_pairs]
         answers = [qa['answer'] for qa in qa_pairs]
-        ground_truths = [qa.get('ground_truth', '') for qa in qa_pairs]
+
+        # Fix ground_truth format: convert list to string if needed
+        ground_truths = []
+        for qa in qa_pairs:
+            gt = qa.get('ground_truth', '')
+            # Convert list to string (take first element or join)
+            if isinstance(gt, list):
+                gt = gt[0] if gt else ''
+            ground_truths.append(str(gt))
 
         # Run RAGAS
         ragas_results = self.detect(questions, contexts, answers, ground_truths)

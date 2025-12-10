@@ -49,12 +49,12 @@ class NLIDetector:
         if self.pipeline is None:
             self.load_model()
 
-        # Format input for NLI
-        # Some models expect specific format
+        # Format input for NLI with truncation for long texts
+        # RoBERTa has 512 token limit
         text = f"{premise} [SEP] {hypothesis}"
 
-        # Get prediction
-        result = self.pipeline(text)[0]
+        # Get prediction with truncation enabled
+        result = self.pipeline(text, truncation=True, max_length=512)[0]
 
         # Extract label and score
         label = result['label'].lower()

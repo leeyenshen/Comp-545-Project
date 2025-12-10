@@ -25,12 +25,25 @@ class RAGASDetector:
     RAGAS-based hallucination detector using local models
     """
 
-    def __init__(self, config):
+    def __init__(self, config, use_openai=True):
+        """
+        Initialize RAGAS detector
+
+        Args:
+            config: Configuration dict
+            use_openai: If True, use OpenAI API (fast). If False, use local models (slow).
+        """
         self.config = config
         self.metrics_config = config['detection']['ragas']['metrics']
+        self.use_openai = use_openai
 
-        # Initialize local models for RAGAS
-        self._init_local_models()
+        # Initialize models based on preference
+        if use_openai:
+            print("✓ Using OpenAI API for RAGAS (hybrid mode: OpenAI LLM + local embeddings)")
+            self._init_openai_hybrid()
+        else:
+            print("Using local models for RAGAS (slow mode)")
+            self._init_local_models()
 
         # Map metric names to RAGAS metrics
         self.metric_map = {
@@ -40,20 +53,45 @@ class RAGASDetector:
             'context_recall': context_recall
         }
 
+    def _init_openai_hybrid(self):
+        """Initialize OpenAI LLM with local embeddings (hybrid for RAGAS 0.4+)"""
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_huggingface import HuggingFaceEmbeddings as HFEmbeddings
+            from ragas.llms import LangchainLLMWrapper
+            from ragas.embeddings import LangchainEmbeddingsWrapper
+
+            # Use OpenAI for LLM (fast)
+            self.llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-3.5-turbo"))
+
+            # Use local HuggingFace embeddings (avoids OpenAI embed_query issue)
+            self.embeddings = LangchainEmbeddingsWrapper(
+                HFEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+            )
+
+            print("✓ Hybrid models initialized (OpenAI LLM + local embeddings)")
+
+        except Exception as e:
+            print(f"Warning: Could not initialize hybrid models: {e}")
+            print("Falling back to defaults")
+            self.llm = None
+            self.embeddings = None
+
     def _init_local_models(self):
         """Initialize local LLM and embeddings for RAGAS"""
         print("Initializing local models for RAGAS...")
 
         try:
-            # Use a small local LLM for RAGAS
-            # Use TinyLlama for speed
+            # Use a small local LLM for RAGAS with optimized settings for speed
             llm_pipeline = pipeline(
                 "text-generation",
                 model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map="auto",
-                max_new_tokens=100,
-                temperature=0.7
+                max_new_tokens=50,   # Reduced for speed
+                temperature=0.1,     # Lower = faster, more deterministic
+                do_sample=False,     # Greedy = faster
+                pad_token_id=50256
             )
 
             self.llm = LangchainLLMWrapper(HuggingFacePipeline(pipeline=llm_pipeline))
@@ -203,20 +241,38 @@ class RAGASDetector:
         # Run RAGAS
         ragas_results = self.detect(questions, contexts, answers, ground_truths)
 
-        # Convert to DataFrame for easier manipulation
-        results_df = pd.DataFrame(ragas_results)
+        # RAGAS 0.4+ returns a Result object with .scores attribute
+        # Convert to dict format
+        if hasattr(ragas_results, 'scores'):
+            # New RAGAS 0.4+ format
+            scores_dict = ragas_results.scores
+            results_df = pd.DataFrame(scores_dict)
+        elif hasattr(ragas_results, 'to_pandas'):
+            # Alternative: has to_pandas method
+            results_df = ragas_results.to_pandas()
+        elif isinstance(ragas_results, dict):
+            # Already a dict
+            results_df = pd.DataFrame(ragas_results)
+        else:
+            # Unknown format, create empty results
+            print(f"Warning: Unknown RAGAS result format: {type(ragas_results)}")
+            results_df = pd.DataFrame({
+                'faithfulness': [0.5] * len(qa_pairs),
+                'answer_relevancy': [0.5] * len(qa_pairs)
+            })
 
         # Add hallucination predictions
         results = []
         for i, qa in enumerate(qa_pairs):
+            faithfulness = results_df.loc[i, 'faithfulness'] if 'faithfulness' in results_df.columns else 0.5
+            answer_relevancy = results_df.loc[i, 'answer_relevancy'] if 'answer_relevancy' in results_df.columns else None
+
             result = {
                 'question': qa['question'],
                 'answer': qa['answer'],
-                'ragas_faithfulness': results_df.loc[i, 'faithfulness'] if 'faithfulness' in results_df else None,
-                'ragas_answer_relevancy': results_df.loc[i, 'answer_relevancy'] if 'answer_relevancy' in results_df else None,
-                'is_hallucinated': self.classify_hallucination(
-                    results_df.loc[i, 'faithfulness'] if 'faithfulness' in results_df else 0.5
-                )
+                'ragas_faithfulness': faithfulness,
+                'ragas_answer_relevancy': answer_relevancy,
+                'is_hallucinated': self.classify_hallucination(faithfulness)
             }
             results.append(result)
 

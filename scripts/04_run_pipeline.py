@@ -14,6 +14,7 @@ import pandas as pd
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.retrieval.retriever import RAGRetriever
+from src.retrieval.targeted_retriever import TargetedRetriever
 from src.generation.answer_generator import AnswerGenerator
 from src.detection.ragas_detector import RAGASDetector
 from src.detection.nli_detector import NLIDetector
@@ -25,9 +26,27 @@ def load_config():
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_questions(config):
-    """Load questions from dataset"""
-    data_path = Path(config['paths']['raw_data']) / "nq_questions.jsonl"
+def load_questions(config, use_filtered=False):
+    """
+    Load questions from dataset
+
+    Args:
+        config: Configuration dict
+        use_filtered: If True, use filtered answerable questions. If False, use all questions.
+    """
+    if use_filtered:
+        # Try to load filtered questions first
+        filtered_path = Path(config['paths']['raw_data']) / "nq_questions_filtered.jsonl"
+        if filtered_path.exists():
+            data_path = filtered_path
+            print(f"Using filtered questions from {filtered_path}")
+        else:
+            print(f"⚠️  Filtered questions not found at {filtered_path}")
+            print("Falling back to all questions (may result in abstentions)")
+            data_path = Path(config['paths']['raw_data']) / "nq_questions.jsonl"
+    else:
+        data_path = Path(config['paths']['raw_data']) / "nq_questions.jsonl"
+        print(f"Using all questions from {data_path}")
 
     questions = []
     with open(data_path, 'r') as f:
@@ -36,7 +55,7 @@ def load_questions(config):
 
     return questions
 
-def run_retrieval_phase(config, questions, quality_tier):
+def run_retrieval_phase(config, questions, quality_tier, use_targeted=False):
     """
     Run retrieval for all questions at a given quality tier
 
@@ -44,24 +63,39 @@ def run_retrieval_phase(config, questions, quality_tier):
         config: Configuration dict
         questions: List of question dicts
         quality_tier: 'high', 'medium', or 'low'
+        use_targeted: If True, use targeted retrieval with mapping. If False, use FAISS.
 
     Returns:
         List of retrieved contexts with metadata
     """
     print(f"\n{'='*60}")
     print(f"Retrieval Phase - Quality Tier: {quality_tier.upper()}")
+    if use_targeted:
+        print("Using TARGETED retrieval (pre-computed mapping)")
+    else:
+        print("Using FAISS retrieval (semantic search)")
     print('='*60)
 
-    retriever = RAGRetriever(config)
+    if use_targeted:
+        retriever = TargetedRetriever(config)
+    else:
+        retriever = RAGRetriever(config)
 
     retrievals = []
     for question in tqdm(questions, desc=f"Retrieving ({quality_tier})"):
-        docs, metadata = retriever.retrieve_with_quality_control(
-            question['question'],
-            quality_tier=quality_tier,
-            method='dense',  # Can switch to 'bm25'
-            k=5
-        )
+        if use_targeted:
+            docs, metadata = retriever.retrieve_with_quality_control(
+                question['question'],
+                quality_tier=quality_tier,
+                k=5
+            )
+        else:
+            docs, metadata = retriever.retrieve_with_quality_control(
+                question['question'],
+                quality_tier=quality_tier,
+                method='dense',  # Can switch to 'bm25'
+                k=5
+            )
 
         retrievals.append({
             'question': question['question'],
@@ -162,6 +196,7 @@ def run_detection_phase(config, qa_results):
         combined = {
             'question': qa['question'],
             'ground_truth': qa['ground_truth'],
+            'context': qa['context'],  # Include retrieved contexts
             'answer': qa['answer'],
             'quality_tier': qa['quality_tier'],
             'num_relevant': qa['num_relevant'],
@@ -215,6 +250,25 @@ def save_results(config, results, quality_tier):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = output_dir / f"results_{quality_tier}.jsonl"
+
+    # Convert numpy types to Python native types for JSON serialization
+    def convert_to_native(obj):
+        """Convert numpy types to native Python types"""
+        import numpy as np
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, dict):
+            return {k: convert_to_native(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_native(item) for item in obj]
+        return obj
+
+    # Convert all results
+    results = [convert_to_native(result) for result in results]
 
     with open(output_path, 'w') as f:
         for result in results:

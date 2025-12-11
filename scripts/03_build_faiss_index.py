@@ -39,19 +39,46 @@ def create_embeddings(config, passages):
     # Load model
     model_name = config['retrieval']['dense']['model_name']
     print(f"Loading model: {model_name}")
-    model = SentenceTransformer(model_name)
+
+    import torch
+
+    # Use CPU for stability with large batches
+    # MPS has compatibility issues with sentence-transformers on large jobs
+    print("⚠️  Using CPU for embedding generation (MPS unstable with large batches)")
+    print("This will take longer but is more reliable.")
+
+    model = SentenceTransformer(model_name, device='cpu')
 
     # Prepare texts
     texts = [f"{p['title']}\n{p['text']}" for p in passages]
 
-    # Create embeddings
-    print("Encoding passages...")
-    embeddings = model.encode(
-        texts,
-        show_progress_bar=True,
-        batch_size=32,
-        convert_to_numpy=True
-    )
+    # Create embeddings with conservative batch size for stability
+    print(f"Encoding {len(texts):,} passages...")
+    print(f"Estimated time: ~4-6 hours on CPU")
+    print("You can leave this running in the background.\n")
+
+    # Use smaller batch size for CPU stability
+    batch_size = 16
+
+    try:
+        embeddings = model.encode(
+            texts,
+            show_progress_bar=True,
+            batch_size=batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=False  # Disable normalization for stability
+        )
+    except Exception as e:
+        print(f"\n❌ Encoding failed: {e}")
+        print("\nTrying with even smaller batch size...")
+        batch_size = 8
+        embeddings = model.encode(
+            texts,
+            show_progress_bar=True,
+            batch_size=batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=False
+        )
 
     print(f"Created embeddings shape: {embeddings.shape}")
 

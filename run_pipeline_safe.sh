@@ -20,6 +20,9 @@ echo "  • BM25 disabled (Pyserini incompatible with macOS ARM)"
 echo "  • Safe threading settings enabled"
 echo ""
 
+# Activate virtual environment
+source venv/bin/activate
+
 python scripts/04_run_pipeline.py
 
 echo ""

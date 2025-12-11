@@ -196,6 +196,7 @@ class RAGASDetector:
     def classify_hallucination(
         self,
         faithfulness_score: float,
+        answer: str = None,
         threshold: float = 0.5
     ) -> bool:
         """
@@ -203,11 +204,35 @@ class RAGASDetector:
 
         Args:
             faithfulness_score: RAGAS faithfulness score
+            answer: The generated answer text (optional, for abstention detection)
             threshold: Threshold for classification
 
         Returns:
             True if hallucinated, False otherwise
         """
+        # Check if answer is an abstention (refusing to answer due to insufficient info)
+        # Abstention is NOT a hallucination - it's the correct response to poor context
+        if answer:
+            abstention_phrases = [
+                "i don't know",
+                "i do not know",
+                "don't know",
+                "do not know",
+                "cannot answer",
+                "unable to answer",
+                "insufficient information",
+                "not mentioned in the context",
+                "not mentioned in the provided context",
+                "no information",
+                "does not mention",
+                "does not contain"
+            ]
+
+            answer_lower = answer.lower()
+            if any(phrase in answer_lower for phrase in abstention_phrases):
+                # Abstention is NOT a hallucination
+                return False
+
         # Lower faithfulness = more hallucination
         return faithfulness_score < threshold
 
@@ -272,7 +297,7 @@ class RAGASDetector:
                 'answer': qa['answer'],
                 'ragas_faithfulness': faithfulness,
                 'ragas_answer_relevancy': answer_relevancy,
-                'is_hallucinated': self.classify_hallucination(faithfulness)
+                'is_hallucinated': self.classify_hallucination(faithfulness, answer=qa['answer'])
             }
             results.append(result)
 
